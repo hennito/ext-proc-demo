@@ -1,8 +1,9 @@
 EXTPROC-SAMPLE
 ==============
 
-Example grails app using the ext-proc plugin. The app is written and tested with grails-2.0.0RC3.
-To create from scratch see below.
+Example grails app using the ext-proc plugin (https://github.com/hennito/grails-ext-proc-plugin). 
+
+The app is written and tested with grails-2.0.0RC3. To create from scratch see below.
 
 This simple application is invoking gnuplot to create an image and show it.
 
