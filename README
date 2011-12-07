@@ -1,6 +1,194 @@
 EXTPROC-SAMPLE
 ==============
 
-Example grails app using the ext-proc plugin.
+Example grails app using the ext-proc plugin. The app is written and tested with grails-2.0.0RC3.
+To create from scratch see below.
 
-comming soon
+This simple application is invoking gnuplot to create an image and show it.
+
+
+Quick Start
+-----------
+
+Get the project:
+
+# git clone git://github.com/hennito/ext-proc-demo.git
+
+# cd ext-proc-demo/ext-proc-demo
+
+# grails run-app
+
+open in your favorite browser:
+http://localhost:8080/ext-proc-demo/invoker/invoke
+
+Start another instance of the app:
+# grails -Dserver.port=7070 -DforceRemote run-app
+
+You'll see in the log a line
+"using remote gnuplot process"
+
+open in your favorite browser:
+http://localhost:7070/ext-proc-demo/invoker/invoke
+
+When you check the logs of both apps, you'll find that app on port 7070 is invoking gnuplot via 
+webservice from the app at port 8080.
+
+
+From Scratch
+------------
+
+This should work in any grails version after and including 1.3.5. (the dependency on cxf plugin 
+requires grails 1.3.5 or newer).
+
+# grails create-app extproc-demo
+# cd extproc-demo
+# grails install-plugin ext-proc
+
+The following example is for gnuplot on a linux machine. 
+Set up the external process i.e. in grails-app/conf/BootStrap.groovy:
+
+import grails.plugin.extproc.*
+
+def init = { servletContext ->
+		def EXTERNAL_PROCESS_GNUPLOT = "gnuplot"
+		String gnuplotBin = "/usr/bin/gnuplot"
+		def useLocal = new File(gnuplotBin).exists() && !System.properties.forceRemote
+						
+		// use it
+		if (useLocal) {
+			log.info "using local gnuplot process"
+			def gnuplot = new ExternalProcess(
+				name:EXTERNAL_PROCESS_GNUPLOT,
+				command:gnuplotBin,
+				defaultParams:[ExternalProcess.WORKDIR_PLACEHOLDER],
+				workDir:ExternalProcess.NEW_WORKDIR,
+				isRemote:false,
+				exposeViaWS:true,	// allow remote access
+				cleanUpWorkDir:true,
+				returnZippedDir:true,
+				timeout:15000,
+				allowedFilesPattern:'.*dat$',
+				allowedFiles:["gnuplot.dat"],
+				requiredFiles:[],
+				returnFilesPattern:'.*\\.png$',
+				returnFiles:["gnuplotted.png"]
+			)
+			gnuplot.save(failOnError:true,flush:true)
+		}
+		else {
+			// use gnuplot remotely
+			log.info "using remote gnuplot process"
+			def gnuplotRemote = new ExternalProcess(
+				name:EXTERNAL_PROCESS_GNUPLOT,
+				command:"$EXTERNAL_PROCESS_GNUPLOT@http://localhost:8080/ext-proc-demo/services/externalProcess?wsdl", // TODO: CHANGEME
+				workDir:"",
+				isRemote:true,
+				cleanUpWorkDir:true,
+				returnZippedDir:true,
+				timeout:15000
+			)
+			gnuplotRemote.save(failOnError:true,flush:true)
+		}
+}
+
+
+
+And create a controller
+# grails create-controller extproc.demo.Invoker
+
+with the following content:
+
+package extproc.demo
+
+import grails.plugin.extproc.*
+
+class InvokerController {
+
+  def fileHandlingService
+	def externalProcessService
+
+// the example gnu plot input file is taken from 
+// http://gnuplot.sourceforge.net/demo/surface1.2.gnu
+
+	def sampleGnuPlot ="""set terminal png transparent nocrop enhanced font arial 8 size 420,320
+set output 'gnuplotted.png'
+set grid nopolar
+set grid xtics nomxtics ytics nomytics noztics nomztics \
+ nox2tics nomx2tics noy2tics nomy2tics nocbtics nomcbtics
+set grid layerdefault   linetype 0 linewidth 1.000,  linetype 0 linewidth 1.000
+set samples 21, 21
+set isosamples 11, 11
+set title "3D gnuplot demo"
+set xlabel "X axis"
+set xlabel  offset character -3, -2, 0 font "" textcolor lt -1 norotate
+set xrange [ -10.0000 : 10.0000 ] noreverse nowriteback
+set ylabel "Y axis"
+set ylabel  offset character 3, -2, 0 font "" textcolor lt -1 rotate by 90
+set yrange [ -10.0000 : 10.0000 ] noreverse nowriteback
+set zlabel "Z axis"
+set zlabel  offset character -5, 0, 0 font "" textcolor lt -1 norotate
+splot x**2+y**2, x**2-y**2
+"""
+
+	def invoke = {
+		def sampleInput = params.sampleInput ?: sampleGnuPlot
+	
+// create temp dir with the gnuplot input file
+		def tempDir = fileHandlingService.createTempDir()
+		def inputFile = fileHandlingService.fileInTemp(tempDir, "gnuplot.dat")
+		inputFile << sampleInput
+
+// create the input for the external process
+		ExternalProcessInput input = new ExternalProcessInput()
+		input.parameters =  ["gnuplot.dat"]
+		input.zippedWorkDir = fileHandlingService.zipDir(tempDir) { fn -> "gnuplot.dat".equals(fn)}
+		
+// invoke the external process (never mind if it's local or remote
+		ExternalProcessResult output = externalProcessService.executeProcess("gnuplot", input)
+
+// check for errors
+		if (output.serviceReturn != null) {
+			// we have a ext proc error
+			log.error "EXT-PROC error ${output.serviceReturn}"
+			render "EXT-PROC error\n${output.serviceReturn}"
+		} else {
+			if (output.returnCode != 0) {
+				// 	we have a gnuplot error
+				log.error "GNUPLOT error ${output.consoleLog}"
+				render "GNUPLOT error\n ${output.consoleLog}"
+			}
+			else {
+				// all set, we got the response
+				fileHandlingService.unzipByteArrayToDir(output.zippedDir, tempDir) { fn -> "gnuplotted.png".equals(fn)}
+				// no we have the result file from gnuplot in the local temp dir
+				File resultFile = fileHandlingService.fileInTemp(tempDir,"gnuplotted.png")
+				byte[] content = resultFile.bytes
+				def fileSize = content.length
+				response.setContentType("image/png")
+				response.setContentLength(fileSize)
+				def out = response.outputStream
+				out << content
+				out.close()
+			}
+		}
+	}
+}
+
+Thats all, now run the app:
+# grails run-app
+
+open in your favorite browser:
+http://localhost:8080/ext-proc-demo/invoker/invoke
+
+Start another instance of the app:
+# grails -Dserver.port=7070 -DforceRemote=1 run-app
+
+You'll see in the log a line
+"using remote gnuplot process"
+
+open in your favorite browser:
+http://localhost:7070/ext-proc-demo/invoker/invoke
+
+When you check the logs of both apps, you'll find that app on port 7070 is invoking gnuplot via 
+webservice from the app at port 8080.
+
