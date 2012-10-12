@@ -23,7 +23,7 @@ open in your favorite browser:
 http://localhost:8080/ext-proc-demo/invoker/invoke
 
 Start another instance of the app:
-# grails -Dserver.port=7070 -DforceRemote run-app
+# grails -Dserver.port=7070 -DforceRemote=true run-app
 
 You'll see in the log a line
 "using remote gnuplot process"
@@ -105,7 +105,7 @@ import grails.plugin.extproc.*
 
 class InvokerController {
 
-  def fileHandlingService
+  	def fileHandlingService
 	def externalProcessService
 
 // the example gnu plot input file is taken from 
