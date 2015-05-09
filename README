@@ -10,12 +10,15 @@ This simple application is invoking gnuplot to create an image and show it.
 
 Quick Start
 -----------
-
 Get the project:
 
 # git clone git://github.com/hennito/ext-proc-demo.git
 
+For the 0.2 version of the plugin:
 # cd ext-proc-demo/ext-proc-demo
+
+########## The 0.4 version demo-app is coming soon!
+
 
 # grails run-app
 
